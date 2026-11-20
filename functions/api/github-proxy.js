@@ -226,7 +226,11 @@ export async function onRequestPost(context) {
         let build = null;
         try { pages = await gh(pat, `/repos/${repo}/pages`); } catch (err) { if (err.status !== 404) throw err; }
         try { build = await gh(pat, `/repos/${repo}/pages/builds/latest`); } catch (err) { if (err.status !== 404) throw err; }
-        return json({ repo, pages: pages ? { url: pages.html_url, status: pages.status, cname: pages.cname, branch: pages.source && pages.source.branch } : null, build: build ? { status: build.status, created_at: build.created_at, updated_at: build.updated_at, url: build.url } : null });
+        return json({
+          repo,
+          pages: pages ? { url: pages.html_url, status: pages.status, cname: pages.cname, branch: pages.source && pages.source.branch } : null,
+          build: build ? { status: build.status, created_at: build.created_at, updated_at: build.updated_at, url: build.url } : null
+        });
       }
       case 'trigger_deploy': {
         if (!env.CF_DEPLOY_HOOK) return json({ error: 'CF_DEPLOY_HOOK is not set in environment variables.', setup: true }, 501);

@@ -1,0 +1,12 @@
+name = "nova-os"
+compatibility_date = "2025-11-01"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = "."
+
+# Native Cloudflare Workers AI binding — used server-side by
+# /functions/api/workers-ai.js and /functions/api/council.js.
+[ai]
+binding = "AI"
+
+[observability]
+enabled = true
