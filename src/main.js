@@ -336,6 +336,24 @@ function openVoiceOverlay() {
         // Wake words activate listening
         const wake = raw.match(/^(?:hey |ok |okay )?(?:wake up,? (?:nova|jarvis)|hey (?:nova|jarvis)|jarvis)[,:]?\s*(.*)$/i);
         let query = wake ? wake[1].trim() : raw;
+        // Real UI action intents
+        if (/open (live )?preview|show preview/i.test(raw)) { close(); app.openPanel('workspace', { tab: 'preview' }); toast('Preview opened'); setState('idle', 'Anything else?'); return; }
+        if (/open (code|files)|show (code|files)/i.test(raw)) { close(); app.openPanel('workspace', { tab: 'files' }); toast('Files opened'); setState('idle', 'Anything else?'); return; }
+        if (/open (vision|camera)|show (vision|camera)/i.test(raw)) { close(); app.openPanel('vision'); toast('Vision opened'); setState('idle', 'Anything else?'); return; }
+        if (/open (memory)|catch up/i.test(raw)) { close(); app.openPanel('memory'); toast('Memory opened'); setState('idle', 'Anything else?'); return; }
+        if (/check (my )?mail|read (my )?mail/i.test(raw)) {
+          close();
+          setState('thinking', 'Pulling inbox…');
+          try {
+            const gh = await api('/api/gmail?action=inbox&max=6', { method: 'GET', timeout: 15000 });
+            const msgs = (gh && gh.messages) || [];
+            const text = msgs.length ? `You have ${msgs.length} unread threads. Top: ${msgs[0].from} — ${msgs[0].subject}` : 'Inbox is clear.';
+            document.dispatchEvent(new CustomEvent('nova:reply', { detail: { text } }));
+            speak(text).catch(() => {});
+          } catch (err) { document.dispatchEvent(new CustomEvent('nova:reply', { detail: { text: `Mail unavailable: ${err.message || err}` } })); }
+          setState('idle', 'Anything else?');
+          return;
+        }
         // Vision commands
         if (/look at this|what(?:'s| is) in my hand|scan (this|my hand)/i.test(raw)) {
           setState('thinking', 'Opening camera…');

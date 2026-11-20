@@ -58,7 +58,7 @@ export function openSettingsPanel(app) {
           <div class="set-row__label"><b>Council key pool health</b>
             <small>${loading ? 'Checking environment…' : status && status.configured ? 'Role pools resolve to live providers' : 'No provider keys in this environment — demo routing'}</small>
           </div>
-          <span class="badge ${status && status.configured ? 'badge--ok' : 'badge--demo'}">${loading ? '…' : status && status.configured ? 'ENV CONNECTED' : 'DEMO'}</span>
+          <span class="badge ${status && status.configured ? 'badge--ok' : 'badge--demo'}">${loading ? '…' : status && status.configured ? 'ENV CONNECTED' : 'NO PROVIDER'}</span>
         </div>
         ${providers.map((p) => {
           const on = Boolean(status && status.providers && status.providers[p.id] && status.providers[p.id].configured);

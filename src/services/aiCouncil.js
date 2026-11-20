@@ -1006,24 +1006,6 @@ async function demoInbox(onEvent, steps) {
   return { text, blocks: [], sources: [], followups: followupsFor('inbox') };
 }
 
-/* ── demo: chat ── */
-async function demoChat(prompt, onEvent) {
-  const text = [
-    `${opener()} I can answer that properly once I know which surface you mean — but I can also just take a position.`,
-    '',
-    `**On “${prompt.slice(0, 90)}”**`,
-    '- The useful move is to reduce it to one decision with a measurable outcome, then let the agent loop carry the rest.',
-    '- I can research it live (SearXNG), read the primary sources, and produce a build diff — or keep it conversational.',
-    '',
-    '**What I would do next**',
-    '1. Switch the stage to **Build & Agent Mode** if you want files, not paragraphs.',
-    '2. Or ask me to search — I will cite the live sources rather than recite training data.',
-    '',
-    'Your move, Master Drippy Dee.'
-  ].join('\n');
-  await streamText(text, onEvent);
-  return { text, blocks: [], sources: [], followups: followupsFor('chat') };
-}
 
 function demoSteps(intent) {
   const base = {
@@ -1063,7 +1045,7 @@ async function demoRun({ prompt, mode, onEvent }) {
     case 'github': out = await demoGithub(prompt, onEvent, steps); break;
     case 'call': out = await demoCall(prompt, onEvent); break;
     case 'inbox': out = await demoInbox(onEvent, steps); break;
-    default: out = await demoChat(prompt, onEvent);
+    default: { const t = 'No live provider is available right now, so I cannot fabricate an answer. Check the council status under Settings and your Cloudflare environment keys.'; await streamText(t, onEvent); out = { text: t, blocks: [], sources: [], followups: [] }; break; }
   }
 
   steps.forEach((s) => {
@@ -1108,11 +1090,23 @@ export async function runAgent({ prompt, mode = 'chat', onEvent = () => {}, forc
       result = await liveRun({ prompt, mode, onEvent: track });
       result.demo = false;
     } catch (err) {
-      onEvent({ type: 'notice', text: `Council unreachable (${err.message}). Continuing in demo mode.` });
-      result = await demoRun({ prompt, mode, onEvent: track });
+      onEvent({ type: 'notice', text: `Council unreachable (${err.message || err}).` });
+      const t = `**Provider error:** ${err && err.message ? err.message : 'unknown fault'}\n\nNo canned reply was generated.`;
+      await streamText(t, onEvent);
+      result = { text: t, blocks: [], sources: [], followups: [], demo: false, intent: 'chat' };
     }
   } else {
-    result = await demoRun({ prompt, mode, onEvent: track });
+    try {
+      baseSteps.slice(0, 2).forEach((s) => track({ type: 'step-add', step: s }));
+      if (baseSteps[0]) track({ type: 'step-update', id: baseSteps[0].id, state: 'done', detail: 'routing via council' });
+      result = await liveRun({ prompt, mode, onEvent: track });
+      result.demo = false;
+    } catch (err) {
+      onEvent({ type: 'notice', text: `Council unreachable (${err.message || err}).` });
+      const t = `**Provider error:** ${err && err.message ? err.message : 'unknown fault'}\n\nNo canned reply was generated.`;
+      await streamText(t, onEvent);
+      result = { text: t, blocks: [], sources: [], followups: [], demo: false, intent: 'chat' };
+    }
   }
 
   const message = {

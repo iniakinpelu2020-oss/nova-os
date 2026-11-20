@@ -94,18 +94,21 @@ export async function onRequestPost(context) {
   const maxTokens = Math.min(Number(payload.max_tokens) || 4096, 4096);
   const started = Date.now();
 
-  // If a Workers AI model was requested and the binding exists, use it.
-  if (model.startsWith(ALLOWED_PREFIX) && env && env.AI) {
-    // Fallback model handling: try requested, then gpt-oss-120b
-    const modelsToTry = model === FALLBACK_MODEL ? [FALLBACK_MODEL] : [model, FALLBACK_MODEL];
+  const modelsToTry = [];
+  if (model.startsWith(ALLOWED_PREFIX)) modelsToTry.push(model);
+  for (const m of ['@cf/meta/llama-3.3-70b-instruct-fp8-fast', '@cf/openai/gpt-oss-120b']) if (!modelsToTry.includes(m)) modelsToTry.push(m);
+
+  let lastErr = null;
+  // If the binding exists, try Workers AI models.
+  if (env && env.AI) {
     for (const m of modelsToTry) {
       try {
         const result = await env.AI.run(m, { messages: clean, max_tokens: maxTokens });
         const text = normalise(result);
         if (text) return json({ text, model: m, provider: 'workers-ai', ms: Date.now() - started });
+        lastErr = new Error(`Workers AI ${m} returned an empty response`);
       } catch (err) {
-        // rotate to fallback model / groq
-        if (m === FALLBACK_MODEL) break;
+        lastErr = err;
       }
     }
   }
@@ -117,6 +120,9 @@ export async function onRequestPost(context) {
     if (out.ok) return json({ text: out.text, model: out.model, provider: out.provider, ms: Date.now() - started });
   }
 
+  if (lastErr) {
+    return json({ error: `Workers AI failed: ${lastErr.message || lastErr}` }, 502);
+  }
   if (!env || !env.AI) {
     return json({ error: 'Workers AI binding is not available and no GROQ_CHAT_KEYS configured.' }, 503);
   }

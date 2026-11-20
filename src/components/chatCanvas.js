@@ -534,6 +534,37 @@ export function mountChatCanvas(app) {
     app.refreshChats();
     renderAttachments();
 
+    // ── Real UI action intents: execute before hitting the LLM ──
+    const low = text.toLowerCase();
+    const finishAction = (msgText) => {
+      const novaMsg = { id: uid('msg'), role: 'nova', text: msgText, steps: [], blocks: [], sources: [], followups: [], demo: false, ts: Date.now() };
+      store.addMessage(novaMsg);
+      app.refreshChats();
+      render();
+      if (app.autoSpeak()) speak(novaMsg.text).catch(() => {});
+    };
+    if (/open (live )?preview|show preview/.test(low)) { app.openPanel('workspace', { tab: 'preview' }); finishAction('Opened the Workspace on the **Preview** tab.'); return; }
+    if (/open (code|files)|show (code|files)/.test(low)) { app.openPanel('workspace', { tab: 'files' }); finishAction('Opened the Workspace on the **Files** tab.'); return; }
+    if (/open (vision|camera)|show (vision|camera)/.test(low)) { app.openPanel('vision'); finishAction('Opened the **Vision & Ad Studio**.'); return; }
+    if (/open (memory)|catch up|read (our |past )?conversations/.test(low)) { app.openPanel('memory'); finishAction('Opened the **Persistent Memory** drawer.'); return; }
+    if (/check (my )?mail|read (my )?mail|read (latest )?email/.test(low)) {
+      (async () => {
+        try {
+          const gh = await api('/api/gmail?action=inbox&max=6', { method: 'GET', timeout: 15000 });
+          const msgs = (gh && gh.messages) || [];
+          const txt = msgs.length ? `You have ${msgs.length} unread thread${msgs.length === 1 ? '' : 's'}.\n\n${msgs.slice(0, 5).map((m, i) => `${i + 1}. **${m.from}** — ${m.subject}`).join('\n')}` : 'Inbox is clear.';
+          finishAction(txt);
+        } catch (e) { finishAction(`Mail unavailable: ${e && e.message}`); }
+      })();
+      return;
+    }
+    if (/^(lock|go to sleep|close yourself)$/.test(low.trim()) || /\b(lock|go to sleep|close yourself)\b/.test(low)) {
+      finishAction('Locking the HUD…');
+      store.set('lock.locked', true);
+      setTimeout(() => { try { location.reload(); } catch { /* noop */ } }, 400);
+      return;
+    }
+
     busy = true;
     pending = { steps: [], text: '', sources: [], blocks: [], started: Date.now(), dirtyBlocks: false };
     render();
@@ -585,7 +616,7 @@ export function mountChatCanvas(app) {
       if (pending && pending.text && !result.text) result.text = pending.text;
     } catch (err) {
       result = {
-        id: uid('msg'), role: 'nova', demo: true,
+        id: uid('msg'), role: 'nova', demo: false,
         text: `**I could not complete that run.**\n\n\`${err.message || 'unknown fault'}\`\n\nNothing was written and no deploy was attempted. Try again, or check the council status under Settings.`,
         steps: [], blocks: [], sources: [], followups: ['Check council status', 'Retry the request']
       };
