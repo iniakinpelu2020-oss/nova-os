@@ -514,6 +514,18 @@ function start() {
   }
 }
 
+/* ── native boot sequence splash ──────────────────────── */
+(function bootSplash() {
+  const splash = document.getElementById('bootSplash');
+  if (!splash) return;
+  const checks = splash.querySelectorAll('.boot-splash__checks li');
+  [350, 700, 1100].forEach((t, i) => {
+    if (checks[i]) setTimeout(() => checks[i].classList.add('is-ok'), t);
+  });
+  setTimeout(() => splash.classList.add('is-done'), 1500);
+  setTimeout(() => { try { splash.remove(); } catch { /* noop */ } }, 2000);
+})();
+
 /* the gate decides when the workspace appears */
 const gate = mountBiometricGate({
   onUnlock: () => {

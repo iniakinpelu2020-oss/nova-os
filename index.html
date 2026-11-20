@@ -14,6 +14,19 @@
   <link rel="stylesheet" href="./src/styles/theme.css" />
 </head>
 <body>
+  <!-- ── native boot sequence splash ───────────────────────── -->
+  <div id="bootSplash" class="boot-splash" role="status" aria-live="polite" aria-label="Booting NOVA OS">
+    <div class="boot-splash__card">
+      <div class="lock__brand"><span class="brand-dot" aria-hidden="true"></span> NOVA // OS</div>
+      <p class="boot-splash__title">Setting up NOVA // OS…</p>
+      <ul class="boot-splash__checks">
+        <li data-check="inference"><span class="boot-check__dot"></span> Inference Engine (Cloudflare/Groq)</li>
+        <li data-check="council"><span class="boot-check__dot"></span> Multi-Brain Council</li>
+        <li data-check="telemetry"><span class="boot-check__dot"></span> HUD Telemetry</li>
+      </ul>
+    </div>
+  </div>
+
   <!-- ── biometric startup gate ───────────────────────────── -->
   <div id="lockScreen" class="lock" role="dialog" aria-modal="true" aria-label="Startup security">
     <div class="lock__card">
