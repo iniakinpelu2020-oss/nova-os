@@ -81,9 +81,9 @@ function poolsFor(env, role) {
     return [];
   };
   return {
-    vertex: pick(`VERTEX_${R}_KEYS`, 'VERTEX_API_KEYS', 'VERTEX_KEY'),
-    groq: pick(`GROQ_${R}_KEYS`, 'GROQ_API_KEYS', 'GROQ_API_KEY'),
-    zai: pick(`ZAI_${R}_KEYS`, 'ZAI_API_KEYS', 'ZAI_API_KEY'),
+    vertex: pick(`VERTEX_${R}_KEYS`, 'VERTEX_CODING_KEYS', 'VERTEX_API_KEYS', 'VERTEX_KEY'),
+    groq: pick(`GROQ_${R}_KEYS`, 'GROQ_CHAT_KEYS', 'GROQ_API_KEYS', 'GROQ_API_KEY'),
+    zai: pick(`ZAI_${R}_KEYS`, 'ZAI_CODING_KEYS', 'ZAI_API_KEYS', 'ZAI_API_KEY'),
     venice: splitKeys(env.VENICE_API_KEYS || env.VENICE_API_KEY)
   };
 }

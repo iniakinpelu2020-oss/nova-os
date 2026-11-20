@@ -708,7 +708,7 @@ export function mountChatCanvas(app) {
   }
 
   async function pushSnippet(code) {
-    const repo = store.get('prefs.repo', 'drippy-dee/nova-os');
+    const repo = store.get('prefs.repo', 'iniakinpelu2020-oss/nova-os');
     const name = `snippets/nova-${Date.now().toString(36)}.js`;
     const res = await github.pushFiles(repo, [{ path: name, content: code }], 'nova: add snippet from chat');
     if (res.ok) toast(`Committed to ${repo}`, 'ok');

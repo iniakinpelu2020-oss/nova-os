@@ -889,7 +889,7 @@ async function demoGithub(prompt, onEvent, steps) {
   await advance(0, 'credential present', 420);
   const list = await runTool('list_repos', {});
   await advance(1, list.ok ? `${(list.data && list.data.repos ? list.data.repos.length : 0)} repos` : list.error, 620);
-  const repos = (list.data && list.data.repos) || [];
+  const repos = (list.repos || (list.data && list.data.repos) || []);
   const text = [
     `${opener()} GitHub is armed server-side.`,
     '',

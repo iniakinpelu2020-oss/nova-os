@@ -328,7 +328,7 @@ export function openWorkspacePanel(app, opts = {}) {
       }
 
       async function push() {
-        const repo = store.get('prefs.repo', 'drippy-dee/nova-os');
+        const repo = store.get('prefs.repo', 'iniakinpelu2020-oss/nova-os');
         const payload = Object.entries(files()).map(([path, content]) => ({ path, content }));
         toast('Pushing complete files…');
         const res = await github.pushFiles(repo, payload, 'nova: workspace snapshot');
@@ -342,7 +342,7 @@ export function openWorkspacePanel(app, opts = {}) {
       }
 
       async function deploy() {
-        const repo = store.get('prefs.repo', 'drippy-dee/nova-os');
+        const repo = store.get('prefs.repo', 'iniakinpelu2020-oss/nova-os');
         toast('Triggering deploy…');
         const res = await github.triggerDeploy(repo);
         if (res && res.ok) toast(`Deploy triggered: ${res.id || 'accepted'}`, 'ok');

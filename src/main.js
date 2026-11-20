@@ -5,6 +5,7 @@
    ============================================================ */
 import { store, escapeHtml } from './services/store.js';
 import { getStatus, isLive } from './services/aiCouncil.js';
+import { api } from './services/net.js';
 import { speak, cancel as cancelSpeech, listen, stopListening } from './services/voiceEngine.js';
 import { $, toast, openModal, copyText, currentPanel } from './services/ui.js';
 import { mountBiometricGate } from './components/biometricGate.js';
@@ -357,6 +358,18 @@ function start() {
     if (chat) chat.refresh();
     document.body.dataset.bridge = st.online ? (st.configured ? 'live' : 'demo') : 'offline';
   }).catch(() => {});
+
+  /* live GitHub username from server env → default repo target */
+  (async () => {
+    try {
+      const gh = await api('/api/github-proxy?status=1', { method: 'GET', timeout: 6000 });
+      if (gh && gh.username) {
+        const repo = `${gh.username}/nova-os`;
+        const current = store.get('prefs.repo', '');
+        if (!current || current === 'drippy-dee/nova-os' || current === 'iniakinpelu2020-oss/nova-os') store.set('prefs.repo', repo);
+      }
+    } catch { /* ignore */ }
+  })();
 
   /* deadline watchdog: one honest nudge, never a storm */
   clearInterval(watchdogTimer);

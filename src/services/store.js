@@ -246,7 +246,7 @@ const DEFAULTS = {
     alerts: true,
     biometric: true,
     searxng: 'https://searxng-6mmb.onrender.com',
-    repo: 'drippy-dee/nova-os',
+    repo: 'iniakinpelu2020-oss/nova-os',
     corsProxy: '',
     effort: 'balanced',
     mode: 'chat',
