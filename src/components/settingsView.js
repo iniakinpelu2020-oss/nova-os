@@ -141,6 +141,21 @@ export function openSettingsPanel(app) {
           </div>
         </div>
         <div class="set-row">
+          <div class="set-row__label"><b>Agent mode</b><small>Orchestrator, Deep Research, Code Assistant, or Morning Digest</small></div>
+          <div class="set-row__control">
+            <select data-field="prefs.agentMode">
+              <option value="orchestrator" ${store.get('prefs.agentMode') === 'orchestrator' ? 'selected' : ''}>Orchestrator</option>
+              <option value="deep-research" ${store.get('prefs.agentMode') === 'deep-research' ? 'selected' : ''}>Deep Research</option>
+              <option value="code-assistant" ${store.get('prefs.agentMode') === 'code-assistant' ? 'selected' : ''}>Code Assistant</option>
+              <option value="morning-digest" ${store.get('prefs.agentMode') === 'morning-digest' ? 'selected' : ''}>Morning Digest</option>
+            </select>
+          </div>
+        </div>
+        <div class="set-row">
+          <div class="set-row__label"><b>Local OpenJarvis / Ollama endpoint</b><small>OpenAI-compatible URL; falls back to cloud when offline</small></div>
+          <div class="set-row__control"><input type="url" data-field="prefs.localEndpoint" value="${escapeHtml(store.get('prefs.localEndpoint'))}" style="width:190px" /></div>
+        </div>
+        <div class="set-row">
           <div class="set-row__label"><b>Search endpoint</b><small>SearXNG instance used for citations</small></div>
           <div class="set-row__control"><input type="url" data-field="prefs.searxng" value="${escapeHtml(store.get('prefs.searxng'))}" style="width:190px" /></div>
         </div>
@@ -391,6 +406,10 @@ export function openSettingsPanel(app) {
             </div>
             <div class="field"><label for="memImport">Import memory (one per line, or a JSON array)</label>
               <textarea id="memImport" placeholder='["Ships on Cloudflare Pages", "Dislikes filler"]'></textarea>
+            </div>
+            <div class="field"><label for="geminiImport">Import Gemini History (Google Takeout JSON / text / markdown)</label>
+              <input id="geminiImport" type="file" accept=".json,.txt,.md,.html" />
+              <small class="dim">Parses prompts/replies and stores key facts + projects.</small>
             </div>`,
           actions: [
             { label: 'Close' },
@@ -428,6 +447,35 @@ export function openSettingsPanel(app) {
               el.querySelector('#memList').innerHTML = list();
               toast('Memory updated', 'ok');
             });
+            const fileInput = el.querySelector('#geminiImport');
+            if (fileInput) {
+              fileInput.addEventListener('change', async (ev) => {
+                const f = ev.target.files && ev.target.files[0];
+                if (!f) return;
+                try {
+                  const text = await f.text();
+                  let facts = [];
+                  try {
+                    const data = JSON.parse(text);
+                    const items = Array.isArray(data) ? data : (data.activities || data.items || data.conversations || []);
+                    for (const it of items) {
+                      const q = it.prompt || it.query || it.user || it.title || '';
+                      const a = it.response || it.answer || it.assistant || '';
+                      if (q) facts.push(`Gemini Q: ${String(q).slice(0, 200)}`);
+                      if (a) facts.push(`Gemini A: ${String(a).slice(0, 200)}`);
+                    }
+                  } catch {
+                    // plain text/markdown: split by blank lines
+                    facts = text.split(/\n\s*\n/).map((s) => s.trim()).filter(Boolean).slice(0, 80);
+                  }
+                  facts.slice(0, 120).forEach((t) => store.remember(t));
+                  el.querySelector('#memList').innerHTML = list();
+                  toast(`Imported ${facts.length} Gemini memory items`, 'ok');
+                } catch (e) {
+                  toast('Gemini import failed: ' + (e && e.message), 'bad');
+                }
+              });
+            }
           }
         });
         return m;

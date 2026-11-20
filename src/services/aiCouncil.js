@@ -26,11 +26,19 @@ export const PERSONA = {
     'If the operator insults you, answer only with the dramatic line "Shutting down now." and stop.'
 };
 
-export function systemPrompt(mode = 'chat') {
+export function systemPrompt(mode = 'chat', agentMode = null) {
   const files = Object.keys(store.get('files', {}));
   const tasks = store.get('tasks', []).filter((t) => !t.done).slice(0, 6);
   const repo = store.get('prefs.repo', '');
   const online = navigator.onLine ? 'online' : 'offline';
+  const am = agentMode || store.get('prefs.agentMode', 'orchestrator');
+  const facts = (store.get('memory.facts') || []).slice(-14);
+  const agentInstructions = {
+    orchestrator: 'ORCHESTRATOR MODE: You may chain tools (web search, GitHub inspection, Gmail checks, calculations) before answering. Plan the chain, execute, then synthesize.',
+    'deep-research': 'DEEP RESEARCH MODE: Be exhaustive. Search multiple angles, read primary sources, cite everything, then deliver a structured report.',
+    'code-assistant': 'CODE ASSISTANT MODE: Focus on implementation. Read files, propose complete diffs, run security audit, never ship placeholders.',
+    'morning-digest': 'MORNING DIGEST MODE: Summarize weather, GitHub activity, email, and headlines into a concise briefing.'
+  }[am] || '';
   return `You are NOVA, the resident intelligence of NOVA // OS — an agentic command center.
 
 IDENTITY
@@ -52,6 +60,12 @@ CONTEXT
 - Default target repo: ${repo || 'not set'}.
 - Open commitments: ${tasks.map((t) => t.title).join('; ') || 'none'}.
 - Today is ${isoDay()}.
+- Agent mode: ${am}.
+
+${agentInstructions}
+
+MEMORY (relevant snippets from prior sessions and imported Gemini history):
+${facts.length ? facts.map((f) => `- ${f}`).join('\n') : '- (none yet)'}.
 
 STYLE
 - Markdown. Short paragraphs. Bold the load-bearing words.
@@ -109,6 +123,24 @@ export function statusSummary(status) {
    ──────────────────────────────────────────────────────────── */
 export async function deliberate({ messages, role = 'chat', effort, model, synthModel, tools = null, temperature, maxTokens }) {
   const tier = effort || store.get('prefs.effort', 'balanced');
+  const localEndpoint = store.get('prefs.localEndpoint', '');
+  // Try local OpenJarvis / Ollama endpoint first when configured.
+  if (localEndpoint) {
+    try {
+      const res = await fetch(localEndpoint, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ messages, model: model || store.get('prefs.models.chat'), temperature, max_tokens: maxTokens })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const text = (data && (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content)) || data.text || '';
+        if (text) {
+          return { ok: true, text, toolCalls: [], provider: 'local', label: 'Local OpenJarvis', model: data.model || 'local', effort: tier, verified: false, synthesised: false, council: [] };
+        }
+      }
+    } catch { /* fall through to cloud */ }
+  }
   try {
     const res = await api('/api/council', {
       method: 'POST',
@@ -170,7 +202,7 @@ async function liveRun({ prompt, mode, onEvent }) {
   const finalEffort = (auto && route.effort === 'uncensored') ? 'uncensored' : userEffort;
   const effort = finalEffort;
   const role = mode === 'build' ? 'coding' : (auto ? (route.role || store.get('prefs.role', 'chat') || 'chat') : (store.get('prefs.role', 'chat') || 'chat'));
-  const messages = [{ role: 'system', content: systemPrompt(mode) }, ...memoryTail(8), { role: 'user', content: prompt }];
+  const messages = [{ role: 'system', content: systemPrompt(mode, store.get('prefs.agentMode')) }, ...memoryTail(8), { role: 'user', content: prompt }];
   const tools = openAiTools();
   const blocks = [];
   const sources = [];

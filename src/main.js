@@ -284,6 +284,11 @@ function openVoiceOverlay() {
   const caption = $('#voiceCaption');
   const orbBtn = $('#voiceOrbBtn');
   const hint = $('#voiceHint');
+  const agentSelect = $('#agentModeSelect');
+  if (agentSelect) {
+    agentSelect.value = store.get('prefs.agentMode', 'orchestrator');
+    agentSelect.addEventListener('change', () => store.set('prefs.agentMode', agentSelect.value));
+  }
   let meter = null;
   let meterRaf = 0;
   let listening = false;
@@ -338,6 +343,76 @@ function openVoiceOverlay() {
           setState('idle', 'Anything else?');
           return;
         }
+        // Catch up / read past conversations
+        if (/catch up|read (our |our past |past )?conversations|read (our )?history/i.test(raw)) {
+          setState('thinking', 'Recalling sessions…');
+          const chats = store.get('chats', []).slice(0, 5);
+          const tasks = store.get('tasks', []).filter((t) => !t.done).slice(0, 5);
+          const facts = (store.get('memory.facts') || []).slice(-6);
+          const text = `Master Drippy Dee, here is where we left off.\n\n**Recent sessions**\n${chats.map((c) => `- ${c.title}`).join('\n') || '- none'}\n\n**Pending tasks**\n${tasks.map((t) => `- ${t.title} (${t.when})`).join('\n') || '- none'}\n\n**Memory**\n${facts.map((f) => `- ${f}`).join('\n') || '- none'}`;
+          document.dispatchEvent(new CustomEvent('nova:reply', { detail: { text } }));
+          setState('idle', 'Anything else?');
+          return;
+        }
+        // Check my mail
+        if (/check (my )?mail|check (my )?inbox|read (latest |my )?email/i.test(raw)) {
+          setState('thinking', 'Pulling inbox…');
+          try {
+            const gh = await api('/api/gmail?action=inbox&max=6', { method: 'GET', timeout: 15000 });
+            const msgs = (gh && gh.messages) || [];
+            if (!msgs.length) {
+              document.dispatchEvent(new CustomEvent('nova:reply', { detail: { text: 'Inbox is clear, Master Drippy Dee. Nothing unread.' } }));
+            } else {
+              const top = msgs.slice(0, 5);
+              const text = `You have ${msgs.length} unread thread${msgs.length === 1 ? '' : 's'}.\n\n${top.map((m, i) => `${i + 1}. **${m.from}** — ${m.subject}\n   ${String(m.snippet || m.body || '').slice(0, 120)}`).join('\n\n')}`;
+              document.dispatchEvent(new CustomEvent('nova:reply', { detail: { text } }));
+              speak(`You have ${msgs.length} unread emails. Top sender: ${top[0].from}.`).catch(() => {});
+            }
+          } catch (err) {
+            document.dispatchEvent(new CustomEvent('nova:reply', { detail: { text: `Mail unavailable: ${err.message || err}` } }));
+          }
+          setState('idle', 'Anything else?');
+          return;
+        }
+        // Read This / Inspect Screen or Link
+        if (/read this|inspect (screen|link|page)|read what'?s (on|in)/i.test(raw)) {
+          const urlMatch = raw.match(/https?:\/\/[^\s]+/);
+          if (urlMatch) {
+            setState('thinking', 'Reading page…');
+            try {
+              const r = await api('/api/reader', { method: 'POST', timeout: 20000, body: { url: urlMatch[0] } });
+              const text = r && r.text ? r.text.slice(0, 1500) : 'Could not read that page.';
+              document.dispatchEvent(new CustomEvent('nova:reply', { detail: { text: `Here is what I found:\n\n${text}` } }));
+            } catch (err) {
+              document.dispatchEvent(new CustomEvent('nova:reply', { detail: { text: `Reader failed: ${err.message || err}` } }));
+            }
+            setState('idle', 'Anything else?');
+            return;
+          }
+          // screen capture
+          setState('thinking', 'Capturing screen…');
+          try {
+            const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+            const v = document.createElement('video');
+            v.srcObject = stream;
+            await v.play().catch(() => {});
+            await new Promise((r) => setTimeout(r, 400));
+            const c = document.createElement('canvas');
+            c.width = v.videoWidth || 1280;
+            c.height = v.videoHeight || 720;
+            c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+            const dataUrl = c.toDataURL('image/jpeg', 0.8);
+            stream.getTracks().forEach((t) => t.stop());
+            const res = await api('/api/council', { method: 'POST', timeout: 60000, body: { messages: [{ role: 'user', content: 'Read and explain what is on this screen. Be specific and brief.' }], images: [dataUrl], role: 'chat', effort: 'efficient' } });
+            const text = (res && res.text) || 'I could not read the screen.';
+            document.dispatchEvent(new CustomEvent('nova:reply', { detail: { text } }));
+          } catch (err) {
+            // fallback to camera
+            await captureAndInspect();
+          }
+          setState('idle', 'Anything else?');
+          return;
+        }
         // Morning brief
         if (/morning brief/i.test(raw)) {
           setState('thinking', 'Assembling briefing…');
@@ -357,8 +432,16 @@ function openVoiceOverlay() {
             twitter: 'https://x.com',
             x: 'https://x.com',
             reddit: 'https://www.reddit.com',
-            gmail: 'https://mail.google.com'
+            gmail: 'https://mail.google.com',
+            gemini: 'https://gemini.google.com',
+            'apex ai': 'https://apex-ai.example.com',
+            'apex studio': 'https://apex-studio.example.com',
+            apex: 'https://apex-ai.example.com'
           };
+          // Local OS bridge for native app commands (optional)
+          if (/^(open|launch)\s+(app|native)/i.test(raw)) {
+            try { await fetch('http://127.0.0.1:8765/open', { method: 'POST', body: JSON.stringify({ target }) }).catch(() => {}); } catch { /* noop */ }
+          }
           const url = sites[target] || (target.includes('.') ? `https://${target}` : `https://www.google.com/search?q=${encodeURIComponent(target)}`);
           window.open(url, '_blank', 'noopener');
           setState('idle', `Opened ${target}.`);

@@ -247,6 +247,8 @@ const DEFAULTS = {
     biometric: true,
     searxng: 'https://searxng-6mmb.onrender.com',
     repo: 'iniakinpelu2020-oss/nova-os',
+    localEndpoint: 'http://127.0.0.1:8000/v1/chat/completions',
+    agentMode: 'orchestrator',
     corsProxy: '',
     effort: 'balanced',
     mode: 'chat',
