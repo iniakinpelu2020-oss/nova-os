@@ -1,0 +1,30 @@
+{
+  "bind_host": "127.0.0.1",
+  "port": 8787,
+  "token_file": "token.txt",
+  "allowlist": {
+    "apps": ["notepad.exe", "calc.exe", "explorer.exe", "chrome.exe"],
+    "folders": ["%USERPROFILE%\\Documents", "%USERPROFILE%\\Desktop", "%USERPROFILE%\\Downloads"],
+    "windows": []
+  },
+  "tts": {
+    "engine": "piper",
+    "piper_model_path": "voices/en_US-lessac-medium.onnx",
+    "piper_binary": "piper"
+  },
+  "wake_word": {
+    "enabled": false,
+    "model": "hey_nova",
+    "threshold": 0.5
+  },
+  "input_control": {
+    "enabled": false,
+    "session_only": true
+  },
+  "screen_vision": {
+    "enabled": false
+  },
+  "lan_pairing": {
+    "enabled": false
+  }
+}

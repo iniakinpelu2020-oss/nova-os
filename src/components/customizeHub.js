@@ -193,7 +193,7 @@ export function openCustomizeHub(app, initialTab = 'discover') {
           </div>
           <div class="conn-card">
             <span class="conn-card__icon">🧠</span>
-            <span class="conn-card__meta"><b>${(store.get('memory.facts') || []).length} memory facts</b><p>Editable in Settings → Personal context. Import or clear them anytime.</p></span>
+            <span class="conn-card__meta"><b>${store.get('memory.facts', []).length} memory facts</b><p>Editable in Settings → Personal context. Import or clear them anytime.</p></span>
             <button class="conn-test" data-goto="settings" type="button">Open</button>
           </div>
           <div class="conn-card">

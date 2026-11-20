@@ -32,7 +32,7 @@ export function systemPrompt(mode = 'chat', agentMode = null) {
   const repo = store.get('prefs.repo', '');
   const online = navigator.onLine ? 'online' : 'offline';
   const am = agentMode || store.get('prefs.agentMode', 'orchestrator');
-  const facts = (store.get('memory.facts') || []).slice(-14);
+  const facts = store.get('memory.facts', []).slice(-14);
   const agentInstructions = {
     orchestrator: 'ORCHESTRATOR MODE: You may chain tools (web search, GitHub inspection, Gmail checks, calculations) before answering. Plan the chain, execute, then synthesize.',
     'deep-research': 'DEEP RESEARCH MODE: Be exhaustive. Search multiple angles, read primary sources, cite everything, then deliver a structured report.',

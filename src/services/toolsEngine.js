@@ -377,6 +377,12 @@ export const TOOL_DEFS = [
     parameters: { type: 'object', properties: {} }
   },
   {
+    name: 'desktop_action',
+    group: 'desktop',
+    description: 'Run a machine-control action on the paired desktop helper (open_app, move_window, type_text, capture_screen, etc.). Requires helper pairing and toggles.',
+    parameters: { type: 'object', properties: { action: { type: 'string' }, args: { type: 'object' } }, required: ['action'] }
+  },
+  {
     name: 'run_security_audit',
     group: 'security',
     description: 'Run the pre-deploy gate over the current workspace: isolation, XSS, SQLi, CORS, rate limits, rollback.',
@@ -486,6 +492,12 @@ export async function runTool(name, args = {}, ctx = {}) {
       onStep('Running pre-deploy security audit');
       const audit = runSecurityAudit();
       return { ok: audit.passed === audit.total, summary: `Audit ${audit.score}/100 (${audit.passed}/${audit.total})`, data: audit };
+    }
+    case 'desktop_action': {
+      const { helperAction } = await import('./desktopHelper.js');
+      onStep(`Helper: ${args.action || ''}`);
+      const r = await helperAction(args.action, args.args || {});
+      return { ok: r.ok, summary: r.summary || r.error || 'done', data: r, error: r.error };
     }
     default:
       return { ok: false, error: `Unknown tool: ${name}` };

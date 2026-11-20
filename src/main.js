@@ -23,6 +23,16 @@ import { mountOrb, createMicMeter } from './components/neuralOrb.js';
 /* ── theme before first paint ─────────────────────────────── */
 document.body.classList.toggle('theme-slate', store.get('prefs.theme', 'oled') === 'slate');
 document.body.classList.toggle('serious', Boolean(store.get('prefs.serious', false)));
+
+// Persistent on-screen indicator for screen vision.
+const screenVisionBadge = document.getElementById('screenVisionBadge');
+const syncScreenVisionBadge = () => {
+  if (!screenVisionBadge) return;
+  const on = Boolean(store.get('prefs.helperToggles.screenVision', false));
+  screenVisionBadge.hidden = !on;
+};
+syncScreenVisionBadge();
+store.on('change', (e) => { if (e && (e.path === 'prefs.helperToggles' || e.path === 'prefs.helperToggles.screenVision' || e.path === '*')) syncScreenVisionBadge(); });
 if (window.innerWidth > 1024) document.body.classList.add('nav-open');
 
 let status = store.get('councilStatus', null);
@@ -366,7 +376,7 @@ function openVoiceOverlay() {
           setState('thinking', 'Recalling sessions…');
           const chats = store.get('chats', []).slice(0, 5);
           const tasks = store.get('tasks', []).filter((t) => !t.done).slice(0, 5);
-          const facts = (store.get('memory.facts') || []).slice(-6);
+          const facts = store.get('memory.facts', []).slice(-6);
           const text = `Master Drippy Dee, here is where we left off.\n\n**Recent sessions**\n${chats.map((c) => `- ${c.title}`).join('\n') || '- none'}\n\n**Pending tasks**\n${tasks.map((t) => `- ${t.title} (${t.when})`).join('\n') || '- none'}\n\n**Memory**\n${facts.map((f) => `- ${f}`).join('\n') || '- none'}`;
           document.dispatchEvent(new CustomEvent('nova:reply', { detail: { text } }));
           setState('idle', 'Anything else?');

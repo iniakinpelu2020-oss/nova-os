@@ -101,7 +101,7 @@ export function openSettingsPanel(app) {
           ${switchHtml('prefs.alerts', store.get('prefs.alerts'), 'Call approvals')}
         </div>
         <button class="set-row" type="button" data-open="memory">
-          <div class="set-row__label"><b>Personal context &amp; memory</b><small>${(store.get('memory.facts') || []).length} facts remembered</small></div>
+          <div class="set-row__label"><b>Personal context &amp; memory</b><small>${store.get('memory.facts', []).length} facts remembered</small></div>
           <div class="set-row__control"><span class="dim">›</span></div>
         </button>
         <button class="set-row" type="button" data-open="hub">
@@ -216,8 +216,50 @@ export function openSettingsPanel(app) {
       </div>`;
   };
 
+  const helperBlock = () => `
+    <div class="settings-group">
+      <div class="settings-group__title">Desktop Helper (local, OFF by default)</div>
+      <div class="set-row">
+        <div class="set-row__label"><b>Helper URL</b><small>Local Python service (127.0.0.1:8787)</small></div>
+        <div class="set-row__control"><input type="url" data-field="prefs.helperUrl" value="${escapeHtml(store.get('prefs.helperUrl'))}" style="width:190px" /></div>
+      </div>
+      <div class="set-row">
+        <div class="set-row__label"><b>Helper token</b><small>Cryptographic bearer from helper/token.txt</small></div>
+        <div class="set-row__control"><input type="text" data-field="prefs.helperToken" value="${escapeHtml(store.get('prefs.helperToken'))}" style="width:190px" /></div>
+      </div>
+      <div class="set-row">
+        <div class="set-row__label"><b>Allow Nova to type and click</b><small>Session-only; auto-resets to OFF when Nova closes</small></div>
+        ${switchHtml('prefs.helperToggles.inputControl', store.get('prefs.helperToggles.inputControl', false), 'Input control')}
+      </div>
+      <div class="set-row">
+        <div class="set-row__label"><b>Allow Nova to see my screen</b><small>Persistent "SCREEN VISION ACTIVE" badge while enabled</small></div>
+        ${switchHtml('prefs.helperToggles.screenVision', store.get('prefs.helperToggles.screenVision', false), 'Screen vision')}
+      </div>
+      <div class="set-row">
+        <div class="set-row__label"><b>Local Wake Word ("Hey Nova")</b><small>OFF closes the mic stream entirely</small></div>
+        ${switchHtml('prefs.helperToggles.wakeWord', store.get('prefs.helperToggles.wakeWord', false), 'Wake word')}
+      </div>
+      <div class="set-row">
+        <div class="set-row__label"><b>LAN pairing mode (Android)</b><small>Binds helper to 0.0.0.0 when enabled</small></div>
+        ${switchHtml('prefs.helperToggles.lanPairing', store.get('prefs.helperToggles.lanPairing', false), 'LAN pairing')}
+      </div>
+      <div class="set-row">
+        <div class="set-row__label"><b>Voice engine</b><small>Local Piper (offline) or Cloud TTS</small></div>
+        <div class="set-row__control">
+          <select data-field="prefs.voiceEngine">
+            <option value="cloud" ${store.get('prefs.voiceEngine','cloud') === 'cloud' ? 'selected' : ''}>Cloud TTS</option>
+            <option value="piper" ${store.get('prefs.voiceEngine','cloud') === 'piper' ? 'selected' : ''}>Local Piper</option>
+          </select>
+        </div>
+      </div>
+      <button class="set-row" type="button" data-open="actionlog">
+        <div class="set-row__label"><b>Action Log</b><small>Viewable log of executed/refused input actions</small></div>
+        <div class="set-row__control"><span class="dim">›</span></div>
+      </button>
+    </div>`;
+
   const build = () => `
-    <div style="padding:0 2px">${usageBlock()}${securityBlock()}${modelsBlock()}${prefsBlock()}
+    <div style="padding:0 2px">${usageBlock()}${securityBlock()}${modelsBlock()}${prefsBlock()}${helperBlock()}
       <p class="vision-note" style="text-align:center;margin:6px 0 10px">Core provider keys and the GitHub token are environment variables on the server. This screen cannot read or write them.</p>
     </div>`;
 
@@ -365,6 +407,7 @@ export function openSettingsPanel(app) {
         if (open) {
           const target = open.dataset.open;
           if (target === 'memory') openMemory();
+          if (target === 'actionlog') openActionLog();
           if (target === 'hub') { close(); app.openPanel('hub', { tab: 'connectors' }); }
           if (target === 'hub-skills') { close(); app.openPanel('hub', { tab: 'skills' }); }
         }
@@ -390,9 +433,21 @@ export function openSettingsPanel(app) {
         }
       });
 
+      /* action log viewer (desktop helper) */
+      async function openActionLog() {
+        let entries = [];
+        try {
+          const r = await fetch(`${store.get('prefs.helperUrl','http://127.0.0.1:8787').replace(/\/+$/,'')}/action-log`, { headers: { 'x-nova-token': store.get('prefs.helperToken','') } });
+          const d = await r.json();
+          entries = (d && d.entries) || [];
+        } catch { entries = []; }
+        const rows = entries.slice(-80).reverse().map((e) => `<div class="memory-item"><span>${escapeHtml(new Date(e.ts*1000).toLocaleTimeString())} · ${escapeHtml(e.action)} · ${escapeHtml(e.target || '')} → ${escapeHtml(e.result)} ${escapeHtml(e.detail || '')}</span></div>`).join('') || '<p class="dim">No entries yet (or helper unreachable).</p>';
+        openModal({ title: 'Action Log', sub: 'Desktop helper executed/refused actions', body: `<div class="memory-list">${rows}</div>`, actions: [{ label: 'Close' }] });
+      }
+
       /* memory manager */
       function openMemory() {
-        const facts = () => store.get('memory.facts') || [];
+                 const facts = () => store.get('memory.facts', []);
         const list = () => facts().map((f, i) => `
           <div class="memory-item"><span>${escapeHtml(f)}</span><button data-del-memory="${i}" type="button" aria-label="Remove">✕</button></div>`).join('') ||
           '<p class="dim" style="font-size:12.5px">No facts yet. Nova will still remember the conversation.</p>';

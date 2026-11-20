@@ -248,6 +248,10 @@ const DEFAULTS = {
     searxng: 'https://searxng-6mmb.onrender.com',
     repo: 'iniakinpelu2020-oss/nova-os',
     localEndpoint: 'http://127.0.0.1:8000/v1/chat/completions',
+    helperUrl: 'http://127.0.0.1:8787',
+    helperToken: '',
+    helperToggles: { inputControl: false, screenVision: false, wakeWord: false, lanPairing: false },
+    voiceEngine: 'cloud',
     agentMode: 'orchestrator',
     corsProxy: '',
     effort: 'balanced',
@@ -371,10 +375,42 @@ class NovaStore {
     try { localStorage.setItem(KEY, JSON.stringify(this.data)); } catch { /* quota */ }
   }
 
+  /* Normalise any value that is supposed to be a list into a safe Array.
+     Handles localStorage corruption / wrapped shapes ({keys}/{items}) /
+     comma-separated strings so `.slice is not a function` never happens. */
+  toArray(raw) {
+    if (Array.isArray(raw)) return raw;
+    if (Array.isArray(raw && raw.keys)) return raw.keys;
+    if (Array.isArray(raw && raw.items)) return raw.items;
+    if (typeof raw === 'string') return raw.split(',').map((s) => s.trim()).filter(Boolean);
+    return [];
+  }
+
+  getArray(path, fallback = []) {
+    const out = this.get(path, fallback);
+    const norm = this.toArray(out);
+    return norm.length ? norm : (Array.isArray(fallback) ? fallback : []);
+  }
+
   get(path, fallback) {
     if (!path) return this.data;
     const out = path.split('.').reduce((acc, k) => (acc == null ? undefined : acc[k]), this.data);
-    return out === undefined ? fallback : out;
+    if (out === undefined) return fallback;
+    // Defensive normalisation: if the caller expected a list (array fallback),
+    // coerce wrapped/string/corrupt values into a real Array.
+    if (Array.isArray(fallback)) {
+      const norm = this.toArray(out);
+      return norm;
+    }
+    if (Array.isArray(out)) return out;
+    if (out && (Array.isArray(out.keys) || Array.isArray(out.items))) {
+      return Array.isArray(out.keys) ? out.keys : out.items;
+    }
+    if (typeof out === 'string' && fallback === undefined) {
+      // Only split when the value looks like a list; keep scalar strings as-is.
+      if (out.includes(',') || out === '') return this.toArray(out);
+    }
+    return out;
   }
 
   set(path, value) {
@@ -521,4 +557,5 @@ class NovaStore {
 }
 
 export const store = new NovaStore();
+export const toArray = (raw) => store.toArray(raw);
 export { CONNECTORS, DEFAULTS, KEY };

@@ -2,3 +2,10 @@ artifacts/
 node_modules/
 *.log
 .DS_Store
+.env
+.env.*
+!.env.example
+helper/token.txt
+helper/voices/*.onnx
+*.pem
+*.key
