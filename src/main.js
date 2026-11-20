@@ -13,6 +13,7 @@ import { mountSidebar } from './components/sidebarDrawer.js';
 import { mountChatCanvas } from './components/chatCanvas.js';
 import { openStoragePanel, openRadarPanel } from './components/systemHuds.js';
 import { openVisionPanel } from './components/visionModal.js';
+import { searchWeb } from './services/toolsEngine.js';
 import { openCustomizeHub } from './components/customizeHub.js';
 import { openSettingsPanel } from './components/settingsView.js';
 import { openWorkspacePanel } from './components/codeWorkspace.js';
@@ -216,6 +217,62 @@ function wireModeMenu() {
 }
 
 /* ── voice overlay ────────────────────────────────────────── */
+async function captureAndInspect() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: 1280 }, audio: false });
+    const v = document.createElement('video');
+    v.srcObject = stream;
+    await v.play().catch(() => {});
+    await new Promise((r) => setTimeout(r, 500));
+    const c = document.createElement('canvas');
+    c.width = v.videoWidth || 640;
+    c.height = v.videoHeight || 480;
+    c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+    const dataUrl = c.toDataURL('image/jpeg', 0.8);
+    stream.getTracks().forEach((t) => t.stop());
+    toast('Scanning frame…');
+    const res = await api('/api/council', {
+      method: 'POST',
+      timeout: 60000,
+      body: { messages: [{ role: 'user', content: 'Look at this image. Describe what you see, especially any object in hand or code on screen. Be specific and brief.' }], images: [dataUrl], role: 'chat', effort: 'efficient' }
+    });
+    const text = (res && res.text) || 'I could not read the frame.';
+    document.dispatchEvent(new CustomEvent('nova:reply', { detail: { text } }));
+  } catch (err) {
+    toast('Camera unavailable', 'bad');
+  }
+}
+
+async function morningBrief() {
+  const parts = [];
+  // weather
+  try {
+    const pos = await new Promise((resolve, reject) => {
+      if (!navigator.geolocation) return reject(new Error('no geo'));
+      navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 6000 });
+    });
+    const { latitude, longitude } = pos.coords;
+    const w = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code,wind_speed_10m`).then((r) => r.json());
+    const cur = w && w.current;
+    if (cur) parts.push(`Weather: ${Math.round(cur.temperature_2m)}°C, wind ${Math.round(cur.wind_speed_10m)} km/h.`);
+  } catch { parts.push('Weather: unavailable (location blocked).'); }
+  // github repos
+  try {
+    const gh = await api('/api/github', { method: 'GET', timeout: 6000 });
+    if (gh && gh.username) parts.push(`GitHub target: ${gh.username}/nova-os.`);
+  } catch { /* ignore */ }
+  // headlines
+  try {
+    const r = await searchWeb('top headlines today', 5);
+    if (r && r.ok && r.sources && r.sources.length) {
+      parts.push('Headlines:');
+      r.sources.slice(0, 4).forEach((s, i) => parts.push(`${i + 1}. ${s.title}`));
+    }
+  } catch { /* ignore */ }
+  const text = `Good morning, Master Drippy Dee.\n\n${parts.join('\n')}\n\nThat is the board. Say the word and I will take the first item off your desk.`;
+  document.dispatchEvent(new CustomEvent('nova:reply', { detail: { text } }));
+}
+
 function openVoiceOverlay() {
   const overlay = $('#voiceOverlay');
   if (!overlay) return;
@@ -260,11 +317,54 @@ function openVoiceOverlay() {
     setState('listening', 'Listening… say “wake up, Nova” or just talk.');
     listen({
       onInterim: (t) => { caption.textContent = t; caption.classList.add('is-interim'); },
-      onFinal: (t) => {
+      onFinal: async (t) => {
         listening = false;
         caption.classList.remove('is-interim');
-        const wake = t.match(/^(?:hey |ok |okay )?wake up,? nova[:,]?\s*(.*)$/i);
-        const query = wake ? wake[1].trim() : t.trim();
+        const raw = String(t || '').trim();
+        // Close / lock commands
+        if (/close (yourself|hud)|go to sleep|lock (the )?hud/i.test(raw)) {
+          close();
+          toast('Locking HUD…');
+          setTimeout(() => { try { location.reload(); } catch { /* noop */ } }, 400);
+          return;
+        }
+        // Wake words activate listening
+        const wake = raw.match(/^(?:hey |ok |okay )?(?:wake up,? (?:nova|jarvis)|hey (?:nova|jarvis)|jarvis)[,:]?\s*(.*)$/i);
+        let query = wake ? wake[1].trim() : raw;
+        // Vision commands
+        if (/look at this|what(?:'s| is) in my hand|scan (this|my hand)/i.test(raw)) {
+          setState('thinking', 'Opening camera…');
+          await captureAndInspect();
+          setState('idle', 'Anything else?');
+          return;
+        }
+        // Morning brief
+        if (/morning brief/i.test(raw)) {
+          setState('thinking', 'Assembling briefing…');
+          await morningBrief();
+          setState('idle', 'Anything else?');
+          return;
+        }
+        // App launcher
+        const openMatch = raw.match(/^open\s+(.+)$/i);
+        if (openMatch) {
+          const target = openMatch[1].trim().toLowerCase();
+          const sites = {
+            youtube: 'https://www.youtube.com',
+            github: 'https://github.com',
+            whatsapp: 'https://web.whatsapp.com',
+            google: 'https://www.google.com',
+            twitter: 'https://x.com',
+            x: 'https://x.com',
+            reddit: 'https://www.reddit.com',
+            gmail: 'https://mail.google.com'
+          };
+          const url = sites[target] || (target.includes('.') ? `https://${target}` : `https://www.google.com/search?q=${encodeURIComponent(target)}`);
+          window.open(url, '_blank', 'noopener');
+          setState('idle', `Opened ${target}.`);
+          speak(`Opening ${target}.`).catch(() => {});
+          return;
+        }
         if (!query) { setState('idle', 'I am here. Go ahead.'); return; }
         setState('thinking', query);
         document.dispatchEvent(new CustomEvent('nova:send', { detail: { text: query } }));
@@ -321,6 +421,29 @@ function start() {
   $('#drawerBtn')?.addEventListener('click', () => app.toggleNav());
   $('#scrim')?.addEventListener('click', () => app.toggleNav(false));
   $('#profileBtn')?.addEventListener('click', () => openSettingsPanel(app));
+  $('#jarvisHudBtn')?.addEventListener('click', () => app.openVoice());
+
+  // PWA install prompt
+  let deferredPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    const b = $('#installAppBtn');
+    if (b) b.hidden = false;
+  });
+  $('#installAppBtn')?.addEventListener('click', async () => {
+    if (!deferredPrompt) { toast('Use your browser menu → Install app'); return; }
+    deferredPrompt.prompt();
+    try { await deferredPrompt.userChoice; } catch { /* noop */ }
+    deferredPrompt = null;
+    const b = $('#installAppBtn');
+    if (b) b.hidden = true;
+  });
+
+  // service worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/public/sw.js').catch(() => {});
+  }
 
   document.querySelectorAll('[data-open]').forEach((btn) => {
     btn.addEventListener('click', () => app.openPanel(btn.dataset.open));
@@ -337,6 +460,7 @@ function start() {
 
   document.addEventListener('keydown', (e) => {
     const meta = e.metaKey || e.ctrlKey;
+    if ((e.altKey && e.code === 'Space') || (meta && e.key.toLowerCase() === 'k')) { e.preventDefault(); app.openVoice(); return; }
     if (meta && e.key.toLowerCase() === 'j') { e.preventDefault(); app.navigate('new'); }
     if (meta && e.key === '/') { e.preventDefault(); chat && chat.focus(); }
     if (e.key === 'Escape' && !currentPanel() && document.body.classList.contains('nav-open') && window.innerWidth < 1024) {
@@ -362,7 +486,7 @@ function start() {
   /* live GitHub username from server env → default repo target */
   (async () => {
     try {
-      const gh = await api('/api/github-proxy?status=1', { method: 'GET', timeout: 6000 });
+      const gh = await api('/api/github?status=1', { method: 'GET', timeout: 6000 });
       if (gh && gh.username) {
         const repo = `${gh.username}/nova-os`;
         const current = store.get('prefs.repo', '');

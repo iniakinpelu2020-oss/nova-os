@@ -6,6 +6,7 @@
    ============================================================ */
 import { store, escapeHtml } from '../services/store.js';
 import { getStatus } from '../services/aiCouncil.js';
+import { isWebAuthnSupported, isPlatformAuthenticatorAvailable, registerPasskey, removePasskey, loadFaceApi, enrollFace, removeFace } from '../services/biometric.js';
 import { voicesAvailable } from '../services/voiceEngine.js';
 import { openPanel, toast, pct, openModal } from '../services/ui.js';
 
@@ -140,17 +141,6 @@ export function openSettingsPanel(app) {
           </div>
         </div>
         <div class="set-row">
-          <div class="set-row__label"><b>Biometric lock</b><small>Face activation gate at startup, PIN 2026 as fallback</small></div>
-          ${switchHtml('lock.biometric', store.get('lock.biometric'), 'Biometric lock')}
-        </div>
-        <div class="set-row">
-          <div class="set-row__label"><b>Startup PIN</b><small>Custom 4–8 digit fallback PIN (default 2026)</small></div>
-          <div class="set-row__control">
-            <input type="password" inputmode="numeric" maxlength="8" data-pin-input value="${escapeHtml(store.get('lock.pin', '2026'))}" style="width:96px" />
-            <button class="btn" data-pin-save type="button">Save PIN</button>
-          </div>
-        </div>
-        <div class="set-row">
           <div class="set-row__label"><b>Search endpoint</b><small>SearXNG instance used for citations</small></div>
           <div class="set-row__control"><input type="url" data-field="prefs.searxng" value="${escapeHtml(store.get('prefs.searxng'))}" style="width:190px" /></div>
         </div>
@@ -161,8 +151,58 @@ export function openSettingsPanel(app) {
       </div>`;
   };
 
+  const securityBlock = () => {
+    const pin = store.get('lock.pin', '2026');
+    const enrolled = !!store.get('lock.faceDescriptor', null);
+    const passkey = !!store.get('lock.webauthnCredentialId', null);
+    const enrolledAt = store.get('lock.faceEnrolledAt', null);
+    return `
+      <div class="settings-group">
+        <div class="settings-group__title">Security &amp; Lock</div>
+        <div class="set-row">
+          <div class="set-row__label"><b>Lock screen at startup</b><small>Show the security gate when NOVA boots</small></div>
+          ${switchHtml('lock.enabled', store.get('lock.enabled', true), 'Lock screen')}
+        </div>
+        <div class="set-row">
+          <div class="set-row__label"><b>Face scan on lock screen</b><small>Allow “Scan Face” to unlock</small></div>
+          ${switchHtml('lock.biometric', store.get('lock.biometric', true), 'Face scan')}
+        </div>
+        <div class="set-row" style="flex-direction:column;align-items:stretch;gap:8px">
+          <div class="set-row__label"><b>Change PIN</b><small>4–6 digits. Requires current PIN.</small></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <input type="password" inputmode="numeric" maxlength="6" data-cur-pin placeholder="Current" style="width:96px" />
+            <input type="password" inputmode="numeric" maxlength="6" data-new-pin placeholder="New" style="width:96px" />
+            <input type="password" inputmode="numeric" maxlength="6" data-confirm-pin placeholder="Confirm" style="width:96px" />
+            <button class="btn" data-change-pin type="button">Change PIN</button>
+          </div>
+        </div>
+        <div class="set-row">
+          <div class="set-row__label"><b>Webcam face enrollment</b><small>${enrolled ? `Enrolled ${enrolledAt ? new Date(enrolledAt).toLocaleDateString() : ''}` : 'Not enrolled'} · face-api.js</small></div>
+          <div class="set-row__control">
+            <button class="btn" data-enroll-face type="button">Register My Face</button>
+            ${enrolled ? '<button class="btn" data-remove-face type="button">Remove</button>' : ''}
+          </div>
+        </div>
+        <div class="set-row">
+          <div class="set-row__label"><b>Hardware biometrics (WebAuthn)</b><small>${passkey ? 'Passkey registered' : 'Face Unlock / Fingerprint / Windows Hello'}</small></div>
+          <div class="set-row__control">
+            <button class="btn" data-register-passkey type="button">Register Passkey</button>
+            ${passkey ? '<button class="btn" data-remove-passkey type="button">Remove</button>' : ''}
+          </div>
+        </div>
+        <div class="set-row" data-enroll-preview hidden style="flex-direction:column;align-items:stretch;gap:8px">
+          <video data-enroll-video autoplay playsinline muted style="width:100%;max-width:240px;border-radius:12px;background:#000"></video>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn--primary" data-capture-face type="button">Capture Face</button>
+            <button class="btn" data-cancel-enroll type="button">Cancel</button>
+          </div>
+          <small class="dim" data-enroll-status>Position your face in frame, then capture.</small>
+        </div>
+      </div>`;
+  };
+
   const build = () => `
-    <div style="padding:0 2px">${usageBlock()}${modelsBlock()}${prefsBlock()}
+    <div style="padding:0 2px">${usageBlock()}${securityBlock()}${modelsBlock()}${prefsBlock()}
       <p class="vision-note" style="text-align:center;margin:6px 0 10px">Core provider keys and the GitHub token are environment variables on the server. This screen cannot read or write them.</p>
     </div>`;
 
@@ -186,7 +226,8 @@ export function openSettingsPanel(app) {
             document.body.classList.toggle('serious', next);
             toast(next ? 'Serious Mode on' : 'Persona restored');
           }
-          if (path === 'lock.biometric') toast(next ? 'Face lock enabled at startup' : 'Face lock disabled — PIN only');
+          if (path === 'lock.biometric') toast(next ? 'Face scan enabled' : 'Face scan disabled');
+          if (path === 'lock.enabled') toast(next ? 'Lock screen enabled' : 'Lock screen disabled');
           if (path.startsWith('prefs.voice')) rerender();
           return;
         }
@@ -206,6 +247,105 @@ export function openSettingsPanel(app) {
           toast('Startup PIN updated', 'ok');
           return;
         }
+        const changePin = e.target.closest('[data-change-pin]');
+        if (changePin) {
+          const cur = (body.querySelector('[data-cur-pin]')?.value || '').trim();
+          const nw = (body.querySelector('[data-new-pin]')?.value || '').trim();
+          const cf = (body.querySelector('[data-confirm-pin]')?.value || '').trim();
+          const expected = String(store.get('lock.pin', '2026'));
+          if (cur !== expected) { toast('Current PIN incorrect', 'bad'); return; }
+          if (!/^\d{4,6}$/.test(nw)) { toast('New PIN must be 4–6 digits', 'bad'); return; }
+          if (nw !== cf) { toast('PINs do not match', 'bad'); return; }
+          store.set('lock.pin', nw);
+          body.querySelectorAll('[data-cur-pin],[data-new-pin],[data-confirm-pin]').forEach((i) => (i.value = ''));
+          toast('Startup PIN updated', 'ok');
+          return;
+        }
+
+        const enrollFaceBtn = e.target.closest('[data-enroll-face]');
+        if (enrollFaceBtn) {
+          const preview = body.querySelector('[data-enroll-preview]');
+          if (preview) preview.hidden = false;
+          const video = body.querySelector('[data-enroll-video]');
+          if (video && navigator.mediaDevices) {
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 320, height: 320 }, audio: false })
+              .then((s) => { video.srcObject = s; video.play().catch(() => {}); video.dataset.streamId = s.id; })
+              .catch(() => toast('Camera access denied', 'bad'));
+          }
+          return;
+        }
+
+        const cancelEnroll = e.target.closest('[data-cancel-enroll]');
+        if (cancelEnroll) {
+          const video = body.querySelector('[data-enroll-video]');
+          if (video && video.srcObject) { video.srcObject.getTracks().forEach((t) => t.stop()); video.srcObject = null; }
+          const preview = body.querySelector('[data-enroll-preview]');
+          if (preview) preview.hidden = true;
+          return;
+        }
+
+        const captureFace = e.target.closest('[data-capture-face]');
+        if (captureFace) {
+          const video = body.querySelector('[data-enroll-video]');
+          const status = body.querySelector('[data-enroll-status]');
+          if (status) status.textContent = 'Loading face models…';
+          captureFace.disabled = true;
+          (async () => {
+            try {
+              await loadFaceApi();
+              const desc = await enrollFace(video);
+              if (!desc) { if (status) status.textContent = 'No face detected. Try again.'; toast('No face detected', 'bad'); return; }
+              if (status) status.textContent = 'Face enrolled successfully.';
+              toast('Face enrolled', 'ok');
+              if (video && video.srcObject) { video.srcObject.getTracks().forEach((t) => t.stop()); video.srcObject = null; }
+              const preview = body.querySelector('[data-enroll-preview]');
+              if (preview) preview.hidden = true;
+              rerender();
+            } catch (e) {
+              if (status) status.textContent = 'Enrollment failed.';
+              toast('Face enrollment failed: ' + (e && e.message ? e.message : e), 'bad');
+            } finally {
+              captureFace.disabled = false;
+            }
+          })();
+          return;
+        }
+
+        const removeFaceBtn = e.target.closest('[data-remove-face]');
+        if (removeFaceBtn) {
+          removeFace();
+          toast('Face enrollment removed', 'ok');
+          rerender();
+          return;
+        }
+
+        const registerPasskeyBtn = e.target.closest('[data-register-passkey]');
+        if (registerPasskeyBtn) {
+          registerPasskeyBtn.disabled = true;
+          (async () => {
+            try {
+              const avail = await isPlatformAuthenticatorAvailable();
+              if (!avail) { toast('No platform authenticator available', 'bad'); return; }
+              await registerPasskey();
+              toast('Passkey registered', 'ok');
+              rerender();
+            } catch (e) {
+              toast('Passkey registration failed: ' + (e && e.message ? e.message : e), 'bad');
+            } finally {
+              registerPasskeyBtn.disabled = false;
+            }
+          })();
+          return;
+        }
+
+        const removePasskeyBtn = e.target.closest('[data-remove-passkey]');
+        if (removePasskeyBtn) {
+          removePasskey();
+          toast('Passkey removed', 'ok');
+          rerender();
+          return;
+        }
+
         const open = e.target.closest('[data-open]');
         if (open) {
           const target = open.dataset.open;

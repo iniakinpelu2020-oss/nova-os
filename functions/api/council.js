@@ -97,6 +97,13 @@ function candidatesFor(env, role, effort = 'balanced') {
     if (pools.venice.length) {
       out.push({ provider: 'venice', label: 'Venice AI', keys: pools.venice, model: MODELS.venice[role] || MODELS.venice.chat });
     }
+    // Fallback on 402: Venice → Groq → Workers AI binding
+    if (pools.groq.length) {
+      out.push({ provider: 'groq', label: 'GroqCloud', keys: pools.groq, model: MODELS.groq[role] || MODELS.groq.chat });
+    }
+    if (hasAI(env)) {
+      out.push({ provider: 'workers-ai', label: 'Workers AI', keys: [null], model: '@cf/openai/gpt-oss-120b' });
+    }
     return out;
   }
   if (role !== 'reasoning' && pools.groq.length) {
@@ -110,6 +117,10 @@ function candidatesFor(env, role, effort = 'balanced') {
   }
   if (hasAI(env)) {
     out.push({ provider: 'workers-ai', label: 'Workers AI', keys: [null], model: MODELS['workers-ai'][role] });
+    // free env.AI binding fallback model
+    if (!out.some((c) => c.provider === 'workers-ai' && c.model === '@cf/openai/gpt-oss-120b')) {
+      out.push({ provider: 'workers-ai', label: 'Workers AI', keys: [null], model: '@cf/openai/gpt-oss-120b' });
+    }
   }
   return out;
 }
@@ -137,7 +148,7 @@ function normaliseWorkers(result) {
 function httpError(message, status) {
   const err = new Error(message);
   err.status = status;
-  err.retryable = status === 429 || status === 401 || status === 403 || status >= 500;
+  err.retryable = status === 429 || status === 402 || status === 401 || status === 403 || status >= 500;
   return err;
 }
 

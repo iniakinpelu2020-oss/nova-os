@@ -154,9 +154,22 @@ function memoryTail(n = 10) {
     .filter((m) => m.content && m.content.length > 1);
 }
 
+function classifyRoute(prompt = '') {
+  const t = String(prompt).toLowerCase();
+  if (/uncensored|nsfw|no (filter|safety)|jailbreak/i.test(t)) return { role: 'chat', effort: 'uncensored' };
+  if (/code|debug|implement|refactor|function|bug|typescript|javascript|python/i.test(t)) return { role: 'coding', effort: null };
+  if (/why|explain|reason|analy[sz]e|deep|compare|trade-?off/i.test(t)) return { role: 'reasoning', effort: null };
+  return { role: 'chat', effort: null };
+}
+
 async function liveRun({ prompt, mode, onEvent }) {
-  const effort = store.get('prefs.effort', 'balanced');
-  const role = mode === 'build' ? 'coding' : (store.get('prefs.role', 'chat') || 'chat');
+  const userEffort = store.get('prefs.effort', 'balanced');
+  const auto = userEffort === 'balanced' || userEffort === 'auto';
+  const route = classifyRoute(prompt);
+  // In balanced/auto mode, route coding/reasoning roles but keep balanced effort tier unless uncensored requested
+  const finalEffort = (auto && route.effort === 'uncensored') ? 'uncensored' : userEffort;
+  const effort = finalEffort;
+  const role = mode === 'build' ? 'coding' : (auto ? (route.role || store.get('prefs.role', 'chat') || 'chat') : (store.get('prefs.role', 'chat') || 'chat'));
   const messages = [{ role: 'system', content: systemPrompt(mode) }, ...memoryTail(8), { role: 'user', content: prompt }];
   const tools = openAiTools();
   const blocks = [];

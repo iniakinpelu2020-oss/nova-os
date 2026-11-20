@@ -25,7 +25,7 @@ export const onRequestGet = async (context) => {
   return json({
     ok: true,
     configured: Boolean(env.GITHUB_PAT),
-    username: env.GITHUB_USERNAME || null,
+    username: env.GITHUB_USERNAME || 'iniakinpelu2020-oss',
     deployHook: Boolean(env.CF_DEPLOY_HOOK)
   });
 };

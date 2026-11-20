@@ -235,7 +235,7 @@ const seedChat = (title, userText, novaText, pinned = false) => ({
 
 const DEFAULTS = {
   version: 4,
-  lock: { locked: true, biometric: true, pinEnabled: true, pin: '2026', user: 'Master Drippy Dee' },
+  lock: { locked: true, enabled: true, biometric: true, pinEnabled: true, pin: '2026', user: 'Master Drippy Dee', webauthnCredentialId: null, faceDescriptor: null, faceEnrolledAt: null },
   prefs: {
     theme: 'oled',
     personality: true,
@@ -349,6 +349,9 @@ class NovaStore {
     const merged = deepMerge(base, stored);
     merged.lock.locked = true;
     if (merged.lock && merged.lock.pin === '2468') merged.lock.pin = '2026';
+    if (merged.lock && merged.lock.enabled === undefined) merged.lock.enabled = true;
+    if (merged.lock && merged.lock.biometric === undefined) merged.lock.biometric = true;
+    if (!Array.isArray(merged.lock.faceDescriptor)) merged.lock.faceDescriptor = merged.lock.faceDescriptor || null;
     if (!Array.isArray(merged.chats)) merged.chats = base.chats;
     if (!Array.isArray(merged.connectors) || !merged.connectors.length) merged.connectors = base.connectors;
     if (!merged.files || !Object.keys(merged.files).length) merged.files = clone(STARTER_FILES);

@@ -367,6 +367,8 @@ export function mountChatCanvas(app) {
   };
 
   const modelFor = () => {
+    const last = store.get('lastModel', '');
+    if (last) return last;
     const mode = store.get('prefs.mode', 'chat');
     const effort = store.get('prefs.effort', 'balanced');
     if (effort === 'uncensored') return store.get('prefs.models.uncensored', 'venice-uncensored');
@@ -563,6 +565,12 @@ export function mountChatCanvas(app) {
           break;
         case 'notice':
           pending.notice = evt.text;
+          break;
+        case 'meta':
+          if (evt.meta) {
+            if (evt.meta.label) store.set('lastProvider', evt.meta.label);
+            if (evt.meta.model) store.set('lastModel', evt.meta.model);
+          }
           break;
         default:
           break;
