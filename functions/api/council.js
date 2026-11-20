@@ -115,11 +115,17 @@ function candidatesFor(env, role, effort = 'balanced') {
   if (role !== 'reasoning' && pools.zai.length) {
     out.push({ provider: 'zai', label: 'Z.ai', keys: pools.zai, model: MODELS.zai[role] });
   }
+  // Workers AI binding — try the role-tuned model, then always include a
+  // known-good large fallback so a single bad model cannot take the whole
+  // tier down (EFFICIENT / Chat Only must still answer).
   if (hasAI(env)) {
     out.push({ provider: 'workers-ai', label: 'Workers AI', keys: [null], model: MODELS['workers-ai'][role] });
-    // free env.AI binding fallback model
     if (!out.some((c) => c.provider === 'workers-ai' && c.model === '@cf/openai/gpt-oss-120b')) {
       out.push({ provider: 'workers-ai', label: 'Workers AI', keys: [null], model: '@cf/openai/gpt-oss-120b' });
+    }
+    // Extra safe fallback that is widely available on the free binding.
+    if (!out.some((c) => c.provider === 'workers-ai' && c.model === '@cf/meta/llama-3.3-70b-instruct-fp8-fast')) {
+      out.push({ provider: 'workers-ai', label: 'Workers AI', keys: [null], model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast' });
     }
   }
   return out;
